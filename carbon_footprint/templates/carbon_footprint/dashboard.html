@@ -6,14 +6,26 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            max-width: 800px;
+            max-width: 1000px;
             margin: 0 auto;
             padding: 20px;
+            line-height: 1.6;
         }
-        .dashboard {
-            background-color: #f0f0f0;
+        .dashboard-container {
+            display: flex;
+            gap: 20px;
+        }
+        .calculator-section, .profile-section {
+            flex: 1;
+            background-color: #f4f4f4;
             padding: 20px;
-            border-radius: 10px;
+            border-radius: 8px;
+        }
+        .result-box, .rewards-box {
+            background-color: #e7f3fe;
+            border-left: 5px solid #2196F3;
+            padding: 15px;
+            margin-top: 20px;
         }
         table {
             width: 100%;
@@ -24,34 +36,104 @@
             padding: 8px;
             text-align: left;
         }
+        input, select {
+            width: 100%;
+            padding: 8px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+        }
     </style>
 </head>
 <body>
-    <div class="dashboard">
-        <h1>Carbon Footprint Dashboard</h1>
-        
-        <div class="reward-summary">
-            <h2>Reward Profile</h2>
-            <p>Total Points: 0</p>
-            <p>Reward Tier: Green Starter</p>
-            <p>Total Emissions Saved: 0 kg CO2</p>
+    <h1>Carbon Footprint Dashboard</h1>
+    
+    <div class="dashboard-container">
+        <div class="calculator-section">
+            <h2>Carbon Footprint Calculator</h2>
+            <form method="post">
+                {% csrf_token %}
+                <label for="distance">Travel Distance (km):</label>
+                <input type="number" id="distance" name="distance" step="0.1" required 
+                       placeholder="Enter distance travelled" 
+                       value="{{ distance|default:'' }}">
+                
+                <label for="transport_mode">Mode of Transport:</label>
+                <select id="transport_mode" name="transport_mode" required>
+                    <option value="">Select Transport Mode</option>
+                    {% for mode, display in transport_modes %}
+                        <option value="{{ mode }}" 
+                                {% if mode == request.POST.transport_mode %}selected{% endif %}>
+                            {{ display }}
+                        </option>
+                    {% endfor %}
+                </select>
+                
+                <button type="submit">Calculate Carbon Footprint</button>
+            </form>
+
+            {% if result %}
+            <div class="result-box">
+                <h3>Calculation Results</h3>
+                <p><strong>Transport Mode:</strong> {{ transport_mode|capfirst }}</p>
+                <p><strong>Distance:</strong> {{ distance }} km</p>
+                
+                <h4>Emissions Details:</h4>
+                <ul>
+                    <li>Daily Emissions: <strong>{{ result.daily_emissions }} kg CO₂</strong></li>
+                    <li>Annual Emissions: <strong>{{ result.annual_emissions }} kg CO₂</strong></li>
+                    <li>Emissions Saved: <strong>{{ result.emissions_saved }} kg CO₂</strong></li>
+                    <li>Annual Emissions Savings: <strong>{{ result.annual_savings }} kg CO₂</strong></li>
+                </ul>
+                
+                {% if points_earned %}
+                <p><strong>Points Earned:</strong> {{ points_earned }}</p>
+                {% endif %}
+            </div>
+            {% endif %}
         </div>
-        
-        <div class="transport-log">
-            <h2>Transport History</h2>
+
+        <div class="profile-section">
+            <h2>Reward Profile</h2>
+            <div class="rewards-box">
+                <h3>{{ request.user.username }}'s Stats</h3>
+                <p><strong>Total Points:</strong> {{ reward_profile.total_points }}</p>
+                <p><strong>Reward Tier:</strong> {{ reward_profile.get_reward_tier }}</p>
+                <p><strong>Total Emissions Saved:</strong> {{ reward_profile.total_emissions_saved|floatformat:2 }} kg CO₂</p>
+            </div>
+
+            <h3>Travel History</h3>
             <table>
                 <thead>
                     <tr>
                         <th>Date</th>
-                        <th>Transport Mode</th>
+                        <th>Mode</th>
                         <th>Distance</th>
                         <th>Daily Emissions</th>
                     </tr>
                 </thead>
                 <tbody>
+                    {% for entry in entries %}
                     <tr>
-                        <td colspan="4">No entries yet</td>
+                        <td>{{ entry.travel_date }}</td>
+                        <td>{{ entry.get_transport_mode_display }}</td>
+                        <td>{{ entry.distance }} km</td>
+                        <td>{{ entry.daily_emissions }} kg CO₂</td>
                     </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4">No travel entries yet</td>
+                    </tr>
+                    {% endfor %}
                 </tbody>
             </table>
         </div>
