@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Tickets Counter</title>
+    <style>
+        body { 
+            position: relative;
+            top: 175px;
+            font-family: Arial, sans-serif; 
+            text-align: center; 
+            max-width: 600px; 
+            margin: 0 auto; 
+            padding: 20px; 
+            background: linear-gradient(to right, #ff7e5f, #feb47b); 
+            color: white;
+            border-radius: 10px;
+            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.3);
+        }
+
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.4);
+        }
+
+        .counter {
+            font-size: 48px;
+            margin: 20px 0;
+            display: none;
+        }
+
+        .status {
+            color: #ccc;
+            margin-top: 20px;
+            font-size: 1em;
+        }
+
+        .message {
+            color: red;
+            font-size: 1.2em;
+            margin-top: 15px;
+        }
+
+        .button-container {
+            margin-top: 30px;
+        }
+
+        button {
+            background: #ffffff;
+            color: #ff7e5f;
+            font-size: 1.5em;
+            font-weight: bold;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            box-shadow: 0px 3px 6px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        button:hover {
+            background: #ff7e5f;
+            color: white;
+            transform: scale(1.1);
+        }
+
+        .ticket-counter {
+            font-size: 2em;
+            margin-top: 20px;
+            text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.3);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Tickets Counter</h1>
+
+        <div>
+            <div id="dayCount" class="counter">0</div>
+        </div>
+
+        <div>
+            <div id="existingCount" class="counter">0</div>
+        </div>
+
+        <div id="status" class="status">Connecting...</div>
+
+        <div class="button-container">
+            <button id="incrementButton">Increment Tickets</button>
+            <button id="endTripButton" style="background: #ff4d4d; color: white;">End Trip</button>
+        </div>
+
+        <div class="ticket-counter">
+            Tickets: <span id="ticketCount">0</span>
+        </div>
+
+        <div id="message" class="message" style="display: none;"></div>
+    </div>
+
+    <script>
+        const socketUrl = window.location.protocol === 'https:' 
+            ? 'wss://localhost:8765' 
+            : 'ws://localhost:8765';
+
+        const socket = new WebSocket(socketUrl);
+        const statusEl = document.getElementById('status');
+        const messageEl = document.getElementById('message');
+        const ticketCountEl = document.getElementById('ticketCount');
+        const incrementButton = document.getElementById('incrementButton');
+        const endTripButton = document.getElementById('endTripButton');
+
+        let tickets = 0; // Ticket counter variable
+        let dayCount = 0; // Day count variable
+        let existingCount = 0; // Current count variable
+
+        // WebSocket Event Handlers
+        socket.onopen = () => {
+            statusEl.textContent = 'Connected';
+            statusEl.style.color = 'lightgreen';
+        };
+
+        socket.onmessage = (event) => {
+            try {
+                console.log('Received message:', event.data);
+                const data = JSON.parse(event.data);
+                dayCount = data.day_count;
+                existingCount = data.existing_count;
+
+                if (tickets < dayCount) {
+                    const ticketsLeft = dayCount - tickets;
+                    messageEl.textContent = `There are ${ticketsLeft} tickets left to take.`;
+                    messageEl.style.display = 'block';
+                } else {
+                    messageEl.style.display = 'none';
+                }
+
+                console.log(`Day Count: ${dayCount}, Existing Count: ${existingCount}`);
+            } catch (error) {
+                console.error('Error parsing message:', error);
+            }
+        };
+
+        socket.onclose = () => {
+            statusEl.textContent = 'Disconnected';
+            statusEl.style.color = 'red';
+        };
+
+        socket.onerror = (error) => {
+            statusEl.textContent = 'Connection Error';
+            statusEl.style.color = 'red';
+            console.error('WebSocket error:', error);
+        };
+
+        // Increment Tickets Button
+        incrementButton.addEventListener('click', () => {
+            tickets++;
+            ticketCountEl.textContent = tickets;
+
+            if (tickets < dayCount) {
+                const ticketsLeft = dayCount - tickets;
+                messageEl.textContent = `There are ${ticketsLeft} tickets left to take.`;
+                messageEl.style.display = 'block';
+            } else {
+                messageEl.style.display = 'none';
+            }
+        });
+
+        // End Trip Button
+        endTripButton.addEventListener('click', () => {
+            const revenue = parseFloat(prompt("Enter the total revenue collected for the day:"));
+
+            if (isNaN(revenue)) {
+                alert("Invalid input. Please enter a number.");
+                return;
+            }
+
+            const currentDate = new Date().toISOString().split('T')[0]; // Get today's date in YYYY-MM-DD format
+            const data = {
+                date: currentDate,
+                total_tickets: tickets,
+                day_count: dayCount,
+                revenue: revenue
+            };
+
+            // Save data to CSV file
+            const csvData = `Date,Total Tickets,Day Count,Revenue\n${data.date},${data.total_tickets},${data.day_count},${data.revenue}`;
+            const blob = new Blob([csvData], { type: 'text/csv' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `trip_data_${data.date}.csv`;
+            link.click();
+
+            // Close WebSocket connection
+            if (socket.readyState === WebSocket.OPEN) {
+                socket.close();
+            }
+
+            alert("Trip data saved and connection closed.");
+        });
+    </script>
+
+</body>
+</html>
