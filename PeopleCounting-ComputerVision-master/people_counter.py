@@ -17,7 +17,6 @@ import logging
 import traceback
 
 # WebSocket Manager
-# Modify the WebSocketManager class in people_counter.py
 class WebSocketManager:
     def __init__(self, host='localhost', port=8765):
         self.host = host
@@ -60,7 +59,7 @@ class WebSocketManager:
             # Wait before attempting to reconnect
             await asyncio.sleep(5)
 
-    def send_counts(self, day_count, existing_count):
+    def send_counts(self, day_count, existing_count, is_monitoring=False):
         """Send counts via WebSocket with detailed logging"""
         if not self.connected or not self.websocket:
             logging.warning("WebSocket not connected. Cannot send counts.")
@@ -70,7 +69,8 @@ class WebSocketManager:
             try:
                 message = json.dumps({
                     'day_count': day_count,
-                    'existing_count': existing_count
+                    'existing_count': existing_count,
+                    'is_monitoring': is_monitoring
                 })
                 logging.info(f"Attempting to send message: {message}")
                 await self.websocket.send(message)
@@ -93,12 +93,33 @@ logger = logging.getLogger(__name__)
 ws_manager = WebSocketManager()
 ws_manager.start_connection()
 
-# Function to send counts
-def send_counts(day_count, existing_count):
-    ws_manager.send_counts(day_count, existing_count)
+# Monitoring Log Functions
+def get_monitoring_log_file():
+    os.makedirs('logs', exist_ok=True)
+    filename = f'logs/monitoring_timestamps.csv'
+    
+    if not os.path.exists(filename):
+        with open(filename, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(["Timestamp", "Event", "Count", "Monitoring_Active"])
+    
+    return filename
 
-# Initialize YOLO model
-model = YOLO('yolov8s.pt')
+# Global variable to track monitoring state
+is_monitoring = False
+
+def log_monitoring_event(event, count):
+    global is_monitoring
+    filename = get_monitoring_log_file()
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with open(filename, 'a', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow([timestamp, event, count, is_monitoring])
+
+# Modify send_counts function
+def send_counts(day_count, existing_count):
+    global is_monitoring
+    ws_manager.send_counts(day_count, existing_count, is_monitoring)
 
 # Function to get or create daily count file
 def get_daily_count_file():
@@ -149,7 +170,7 @@ def read_existing_count(filename):
     return 0
 
 # Function to log count
-def log_count(filename, day_count, Existing_count):
+def log_count(filename, day_count, existing_count):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with open(filename, 'r', newline='') as f:
         reader = csv.reader(f)
@@ -161,11 +182,14 @@ def log_count(filename, day_count, Existing_count):
             rows = rows[:-1]
     
     # Add new row
-    rows.append([timestamp, str(day_count), str(Existing_count)])
+    rows.append([timestamp, str(day_count), str(existing_count)])
     
     with open(filename, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerows(rows)
+
+# Initialize YOLO model
+model = YOLO('yolov8s.pt')
 
 # Open webcam (0 is usually the default camera)
 cap = cv2.VideoCapture(0)
@@ -194,8 +218,8 @@ daily_count_file = get_daily_count_file()
 
 # Read existing day count if available
 day_count = read_existing_day_count(daily_count_file)
-Existing_count = read_existing_count(daily_count_file)  # Initialize total count with existing day count
-send_counts(day_count, Existing_count)
+existing_count = read_existing_count(daily_count_file)  # Initialize total count with existing day count
+send_counts(day_count, existing_count)
 
 # Set end time for daily counting (10:00 PM)
 end_time = datetime.datetime.now().replace(hour=23, minute=1, second=0, microsecond=0)
@@ -213,7 +237,7 @@ while True:
     current_time = datetime.datetime.now()
     if current_time >= end_time:
         # Log final count for the day
-        log_count(daily_count_file, day_count, Existing_count)
+        log_count(daily_count_file, day_count, existing_count)
         print(f"Daily count logging completed. Total count: {day_count}")
         break
     
@@ -271,11 +295,12 @@ while True:
         if (cy1 < (cy + offset) and (cy1 > cy - offset)):
             if tracked_persons[id]['state'] != 'down':
                 # Only increment if not already counted this way
-                Existing_count += 1
+                existing_count += 1
                 day_count +=1
-                send_counts(day_count, Existing_count)
+                send_counts(day_count, existing_count)
+                log_monitoring_event("Increment", existing_count)
                 tracked_persons[id]['state'] = 'down'
-                print(f"Increment count. Current count: {Existing_count}")
+                print(f"Increment count. Current count: {existing_count}")
             
             cv2.rectangle(frame, (x3, y3), (x4, y4), (0, 0, 255), 2)
             cvzone.putTextRect(frame, f'{id}', (x3, y3), 1, 2)
@@ -284,10 +309,11 @@ while True:
         if (cy2 < (cy + offset) and (cy2 > cy - offset)):
             if tracked_persons[id]['state'] != 'up':
                 # Only decrement if not already counted this way
-                Existing_count = max(0, Existing_count - 1)
-                send_counts(day_count, Existing_count)
+                existing_count = max(0, existing_count - 1)
+                send_counts(day_count, existing_count)
+                log_monitoring_event("Decrement", existing_count)
                 tracked_persons[id]['state'] = 'up'
-                print(f"Decrement count. Current count: {Existing_count}")
+                print(f"Decrement count. Current count: {existing_count}")
             
             cv2.rectangle(frame, (x3, y3), (x4, y4), (0, 255, 0), 2)
             cvzone.putTextRect(frame, f'{id}', (x3, y3), 1, 2)
@@ -298,9 +324,13 @@ while True:
     
     # Display current count and end time
     time_left = end_time - current_time
-    cvzone.putTextRect(frame, f'Count: {Existing_count}', (40, 200), 2, 2)
+    cvzone.putTextRect(frame, f'Count: {existing_count}', (40, 200), 2, 2)
     cvzone.putTextRect(frame, f'Day Count: {day_count}', (50, 60), 2, 2)
     cvzone.putTextRect(frame, f'Time Left: {time_left}', (50, 100), 2, 2)
+    
+    # Add monitoring status to frame
+    monitoring_text = "Monitoring: ON" if is_monitoring else "Monitoring: OFF"
+    cvzone.putTextRect(frame, monitoring_text, (50, 140), 2, 2)
     
     # Write output video (optional)
     output.write(frame)
@@ -309,10 +339,14 @@ while True:
     cv2.imshow('Webcam People Counter', frame)
     
     # Exit on ESC key (manual override)
-    if cv2.waitKey(1) & 0xff == 27:
-        log_count(daily_count_file, day_count, Existing_count)
-        send_counts(day_count, Existing_count)
+    key = cv2.waitKey(1) & 0xff
+    if key == 27:
+        log_count(daily_count_file, day_count, existing_count)
+        send_counts(day_count, existing_count)
         break
+    elif key == ord('m'):  # Press 'm' to toggle monitoring
+        is_monitoring = not is_monitoring
+        print(f"Monitoring {'activated' if is_monitoring else 'deactivated'}")
 
 # Cleanup
 cap.release()

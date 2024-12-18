@@ -1,0 +1,10 @@
+Timestamp,Event,Day_Count,Existing_Count,Monitoring_Active
+2024-12-18 08:04:57,Monitoring Activated,11,0,True
+2024-12-18 08:05:21,Monitoring Deactivated,13,10,False
+2024-12-18 08:06:16,Monitoring Activated,13,10,True
+2024-12-18 08:46:16,Monitoring Deactivated,3,0,False
+2024-12-18 08:46:17,Monitoring Activated,3,0,True
+2024-12-18 08:53:57,Monitoring Deactivated,8,2,False
+2024-12-18 08:53:59,Monitoring Activated,8,2,True
+2024-12-18 08:56:43,Monitoring Deactivated,8,2,False
+2024-12-18 09:01:06,Monitoring Activated,10,2,True
